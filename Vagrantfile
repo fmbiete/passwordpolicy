@@ -13,51 +13,30 @@ Vagrant.configure("2") do |config|
     vb.memory = 1024
   end
 
-  config.vm.define 'centos7' do |centos|
-    centos.vm.box = "centos/7"
+  config.vm.define 'rhel9' do |centos|
+    centos.vm.box = "generic/rhel9"
 
     centos.vm.provision "bootstrap", type: "shell", run: 'never', inline: <<-SHELL
       yum --enablerepo=updates clean metadata
-      yum -y update
-      yum -y install openssl-devel
-      rpm -Uvh https://yum.postgresql.org/10/redhat/rhel-7-x86_64/pgdg-centos10-10-2.noarch.rpm
-      yum -y install postgresql10-server postgresql10-libs postgresql10-devel postgresql10-contrib
-      yum -y install cracklib cracklib-devel cracklib-dicts words
-      mkdict /usr/share/dict/* | packer /usr/lib/cracklib_dict
-      # default data directory is '/var/lib/pgsql/10/data/'
-      /usr/pgsql-10/bin/postgresql-10-setup initdb
-      systemctl start postgresql-10.service
-      systemctl enable postgresql-10.service
-    SHELL
-  end
-
-  config.vm.define 'xenial' do |xenial|
-    xenial.vm.box = "ubuntu/xenial64"
-    xenial.vbguest.auto_update = false
-
-    xenial.vm.provision "fix", type: "shell", run: "never", inline: <<-SHELL
-      echo \"running as: `whoami`\"
-      ls -la /etc/apt/sources.list
-      sed \"s|http://archive.ubuntu.com/ubuntu|http://mirror.amberit.com.bd/ubuntu-archive|g\" -i /etc/apt/sources.list
-    SHELL
-
-    xenial.vm.provision "bootstrap", type: "shell", inline: <<-SHELL
-      add-apt-repository 'deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main'
-      wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-      apt-get -y update
-      apt-get -y install make build-essential
-      apt-get -y install postgresql postgresql-contrib libpq-dev postgresql-server-dev-all
-      apt-get -y install libpam-cracklib libcrack2-dev
-      systemctl start postgresql.service
-      systemctl enable postgresql.service
+      dnf update -y
+      dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+      dnf install -y epel-release
+      dnf install -y openssl-devel gcc make redhat-rpm-config ccache
+      dnf install -y --enablerepo=crb postgresql15-server postgresql15-libs postgresql15-devel postgresql15-contrib
+      dnf install -y --enablerepo-crb install cracklib cracklib-devel cracklib-dicts words
+      mkdict /usr/share/dict/* | packer /var/cache/cracklib/postgresql_dict
+      # default data directory is '/var/lib/pgsql/15/data/'
+      /usr/pgsql-15/bin/postgresql-15-setup initdb
+      systemctl start postgresql-15.service
+      systemctl enable postgresql-15.service
     SHELL
   end
 
   config.vm.provision "install", type: "shell", run: 'never', inline: <<-SHELL
     cd /home/vagrant/passwordpolicy
-    sudo PATH="/usr/pgsql-10/bin:$PATH" make
-    sudo PATH="/usr/pgsql-10/bin:$PATH" make install
-    sudo PATH="/usr/pgsql-10/bin:$PATH" make installcheck
+    sudo PATH="/usr/pgsql-15/bin:$PATH" make
+    sudo PATH="/usr/pgsql-15/bin:$PATH" make install
+    sudo PATH="/usr/pgsql-15/bin:$PATH" make installcheck
     rm passwordpolicy.o passwordpolicy.so
   SHELL
 end
