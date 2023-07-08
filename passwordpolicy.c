@@ -2,28 +2,10 @@
  *
  * passwordpolicy.c
  *
- * Copyright (c) 2018, indrajit
- *
- * Created from postgres passwordcheck.
- *
- *
- * Original license:
- *
- *
- *  /*-------------------------------------------------------------------------
- *  *
- *  * passwordcheck.c
- *  *
- *  *
- *  * Copyright (c) 2009-2017, PostgreSQL Global Development Group
- *  *
- *  * Author: Laurenz Albe <laurenz.albe@wien.gv.at>
- *  *
- *  * IDENTIFICATION
- *  *	  contrib/passwordcheck/passwordcheck.c
- *  *
- *  *-------------------------------------------------------------------------
- *  *\/
+ * Copyright (c) 2023, Francisco Miguel Biete Banon
+ * Copyright (c) 2018-2023, indrajit
+ * Copyright (c) 2009-2017, PostgreSQL Global Development Group
+ * Author: Laurenz Albe <laurenz.albe@wien.gv.at>
  *
  *-------------------------------------------------------------------------
  */
@@ -36,32 +18,34 @@
 #include "libpq/crypt.h"
 #include "fmgr.h"
 
-#if PG_VERSION_NUM < 100000
-#include "libpq/md5.h"
-#endif
-
 #ifdef USE_CRACKLIB
 #include <crack.h>
 #endif
 
 PG_MODULE_MAGIC;
 
-extern void _PG_init(void);
+#include "passwordpolicy.h"
 
-// p_policy.min_password_len
-int passMinLength = 8;
+// hook for other passwordcheck modules
+static check_password_hook_type prev_check_password_hook = NULL;
 
-// p_policy.min_special_chars
-int passMinSpcChar = 2;
+// password_policy.min_password_len
+int passMinLength = 15;
 
-// p_policy.min_numbers
-int passMinNumChar = 2;
+// password_policy.min_special_chars
+int passMinSpcChar = 1;
 
-// p_policy.min_uppercase_letter
-int passMinUpperChar = 2;
+// password_policy.min_numbers
+int passMinNumChar = 1;
 
-// p_policy.min_lowercase_letter
-int passMinLowerChar = 2;
+// password_policy.min_uppercase_letter
+int passMinUpperChar = 1;
+
+// password_policy.min_lowercase_letter
+int passMinLowerChar = 1;
+
+// password_policy.enable_dictionary_check
+bool passEnableDictionaryCheck = true;
 
 /*
  * check_password
@@ -113,30 +97,36 @@ static void check_policy(const char *password) {
   if (number_count < passMinNumChar) {
     ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("password must contain atleast %d numeric characters.",
+             errmsg("password must contain at least %d numeric characters.",
                     passMinNumChar)));
   } else if (spc_char_count < passMinSpcChar) {
     ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("password must contain atleast %d special characters.",
+             errmsg("password must contain at least %d special characters.",
                     passMinSpcChar)));
   } else if (upper_count < passMinUpperChar) {
     ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("password must contain atleast %d upper case letters.",
+             errmsg("password must contain at least %d upper case letters.",
                     passMinUpperChar)));
   } else if (lower_count < passMinLowerChar) {
     ereport(ERROR,
             (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("password must contain atleast %d lower case letters.",
+             errmsg("password must contain at least %d lower case letters.",
                     passMinLowerChar)));
   }
 }
 
-#if PG_VERSION_NUM >= 100000
+
 static void check_password(const char *username, const char *shadow_pass,
                            PasswordType password_type, Datum validuntil_time,
                            bool validuntil_null) {
+  /* Call others passwordcheck modules */
+  if (prev_check_password_hook) {
+    prev_check_password_hook(username, shadow_pass, password_type, validuntil_time, validuntil_null);
+    /* if checks in the previous module pass, we proceed with ours */
+  }
+
   if (password_type != PASSWORD_TYPE_PLAINTEXT) {
     /*
      * Unfortunately we cannot perform exhaustive checks on encrypted
@@ -146,11 +136,11 @@ static void check_password(const char *username, const char *shadow_pass,
      *
      * We only check for username = password.
      */
-    char *logdetail;
+    const char *logdetail = NULL;
 
     if (plain_crypt_verify(username, shadow_pass, username, &logdetail) == STATUS_OK) {
       ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password must not contain user name")));
+                      errmsg("password cannot contain user name")));
     }
   } else {
     /*
@@ -158,6 +148,9 @@ static void check_password(const char *username, const char *shadow_pass,
      */
     const char *password = shadow_pass;
     int pwdlen = strlen(password);
+#ifdef USE_CRACKLIB
+      const char *reason;
+#endif
 
     /* enforce minimum length */
     if (pwdlen < passMinLength) {
@@ -168,137 +161,74 @@ static void check_password(const char *username, const char *shadow_pass,
     /* check if the password contains the username */
     if (strstr(password, username)) {
       ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password must not contain user name.")));
+                      errmsg("password cannot contain user name.")));
     }
 
     check_policy(password);
 
 #ifdef USE_CRACKLIB
-    /* call cracklib to check password */
-    if (FascistCheck(password, CRACKLIB_DICTPATH)) {
-      ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password is easily cracked.")));
+    if (passEnableDictionaryCheck) {
+      /* call cracklib to check password */
+      if ((reason = FascistCheck(password, CRACKLIB_DICTPATH))) {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("password is easily cracked."),
+                        errdetail_log("cracklib diagnostic: %s", reason)));
+      }
     }
 #endif
   }
 
   /* all checks passed, password is ok */
 }
-#else
-static void check_password(const char *username, const char *password,
-                           int password_type, Datum validuntil_time,
-                           bool validuntil_null) {
-  int namelen = strlen(username);
-  int pwdlen = strlen(password);
-  char encrypted[MD5_PASSWD_LEN + 1];
 
-  switch (password_type) {
-  case PASSWORD_TYPE_MD5:
-
-    /*
-     * Unfortunately we cannot perform exhaustive checks on encrypted
-     * passwords - we are restricted to guessing. (Alternatively, we
-     * could insist on the password being presented non-encrypted, but
-     * that has its own security disadvantages.)
-     *
-     * We only check for username = password.
-     */
-    if (!pg_md5_encrypt(username, username, namelen, encrypted)) {
-      elog(ERROR, "password encryption failed.");
-    }
-    if (strcmp(password, encrypted) == 0) {
-      ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password must not contain user name.")));
-    }
-    break;
-
-  case PASSWORD_TYPE_PLAINTEXT:
-
-    /*
-     * For unencrypted passwords we can perform better checks
-     */
-
-    /* enforce minimum length */
-    if (pwdlen < passMinLength) {
-      ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password is too short.")));
-    }
-
-    /* check if the password contains the username */
-    if (strstr(password, username)) {
-      ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password must not contain user name.")));
-    }
-
-    check_policy(password);
-
-#ifdef USE_CRACKLIB
-    /* call cracklib to check password */
-    if (FascistCheck(password, CRACKLIB_DICTPATH)) {
-      ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                      errmsg("password is easily cracked.")));
-    }
-#endif
-    break;
-
-  default:
-    elog(ERROR, "unrecognized password type: %d.", password_type);
-    break;
-  }
-
-  /* all checks passed, password is ok */
-}
-
-#endif
-
-static void define_variables() {
-  /* Define p_policy.min_pass_len */
-  DefineCustomIntVariable("p_policy.min_password_len",
-                          "Minimum password length.", NULL, &passMinLength, 8,
-                          1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-  /* Define p_policy.min_special_chars */
-  DefineCustomIntVariable(
-      "p_policy.min_special_chars", "Minimum number of special characters.",
-      NULL, &passMinSpcChar, 2, 1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-  /* Define p_policy.min_numbers */
-  DefineCustomIntVariable(
-      "p_policy.min_numbers", "Minimum number of numeric characters.", NULL,
-      &passMinNumChar, 2, 1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-  /* Define p_policy.min_uppercase_letter */
-  DefineCustomIntVariable(
-      "p_policy.min_uppercase_letter", "Minimum number of upper case letters.",
-      NULL, &passMinUpperChar, 2, 1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-  /* Define p_policy.min_lowercase_letter */
-  DefineCustomIntVariable(
-      "p_policy.min_lowercase_letter", "Minimum number of lower case letters.",
-      NULL, &passMinLowerChar, 2, 1, INT_MAX, PGC_SIGHUP, 0, NULL, NULL, NULL);
-
-  if (passMinLength < (passMinSpcChar + passMinNumChar + passMinUpperChar + passMinLowerChar)) {
-    ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                    errmsg("configuration error.\nsum of minimum character "
-                           "requirement exceeds minimum password length.")));
-  }
-}
 
 /*
  * Module initialization function
  */
 void _PG_init(void) {
-  /* Be sure we do initialization only once */
-  static bool inited = false;
+  /* Define password_policy.min_pass_len */
+  DefineCustomIntVariable(
+      "password_policy.min_password_len",
+      "Minimum password length.", NULL, &passMinLength, 15, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
-  if (inited) {
-    return;
-  }
+  /* Define password_policy.min_special_chars */
+  DefineCustomIntVariable(
+      "password_policy.min_special_chars",
+      "Minimum number of special characters.", NULL, &passMinSpcChar, 1, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
-  define_variables();
+  /* Define password_policy.min_numbers */
+  DefineCustomIntVariable(
+      "password_policy.min_numbers",
+      "Minimum number of numeric characters.", NULL, &passMinNumChar, 1, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
-  /* activate password checks when the module is loaded */
+  /* Define password_policy.min_uppercase_letter */
+  DefineCustomIntVariable(
+      "password_policy.min_uppercase_letter",
+      "Minimum number of upper case letters.", NULL, &passMinUpperChar, 1, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  /* Define password_policy.min_lowercase_letter */
+  DefineCustomIntVariable(
+      "password_policy.min_lowercase_letter",
+      "Minimum number of lower case letters.", NULL, &passMinLowerChar, 1, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  DefineCustomBoolVariable(
+      "password_policy.enable_dictionary_check",
+      "Enable check against dictionary", NULL, &passEnableDictionaryCheck, false,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+
+  /* activate password checks when the module is loaded, but allow to use multiple passwordcheck modules */
+  prev_check_password_hook = check_password_hook;
   check_password_hook = check_password;
+}
 
-  inited = true;
+void _PG_fini(void) {
+  if (prev_check_password_hook) {
+    check_password_hook = prev_check_password_hook;
+  }
 }
