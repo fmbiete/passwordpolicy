@@ -136,7 +136,7 @@ static void check_password(const char *username, const char *shadow_pass,
      *
      * We only check for username = password.
      */
-    const char *logdetail = NULL;
+    char *logdetail = NULL;
 
     if (plain_crypt_verify(username, shadow_pass, username, &logdetail) == STATUS_OK) {
       ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
