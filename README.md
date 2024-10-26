@@ -61,8 +61,9 @@ To enable this module, add '`passwordpolicy`' to
 
 **Settings are dynamic, but the new values will be only visible for new database sessions.**
 
-Configure the `passwordpolicy` plugin in `postgresql.auto.conf`.
+Configure the `passwordpolicy` module in `postgresql.auto.conf`.
 
+### Password Complexity
 ```
 password_policy.min_password_len = 15      # Set minimum password length
 password_policy.min_special_chars = 1      # Set minimum number of special chracters
@@ -82,6 +83,42 @@ Then you need to enable this `passwordpolicy` setting in `postgresql.auto.conf`
 ```
 password_policy.enable_dictionary_check = true    # Enable checks against a dictionary
 ```
+
+### Setting a password requires a Valid Until clause
+```
+password_policy.require_validuntil = true
+```
+
+### Delaying failed logins
+```
+password_policy_lock.failure_delay = 5              # Number of seconds to delay logins after number of failures
+password_policy_lock.max_number_accounts = 100      # Number of user accounts, it can be smaller than the number of accounts in the system
+password_policy_lock.number_failures = 5            # Number of login failures before rejecting further logins
+password_policy_lock.include_all = true             # Consider all the accounts in the system
+```
+
+Install the extension in _postgres_ database.
+```
+CREATE EXTENSION passwordpolicy;
+```
+
+#### List of lock accounts
+By default a list of all the existing users in the system (pg_user) is read.
+
+If _password_policy_lock.include_all = false_ then a list of user names is read from _passwordpolicy.lockable_accounts_ in _postgres_ database. This table is created by the extension on installation.
+
+It's recommended to indicate the approximate number of users in the database with _password_policy_lock.max_number_accounts_. Failure to do so could lead to poor login performance and accounts not being considered.
+
+This list of users is maintained by the background worker. You can force an update reloading system configuration dynamically.
+
+For each user we keep the number of consecutive login failures and the time of the last failure.
+
+When the number of consecutive failed logins reaches _password_policy_lock.number_failures_ the extension applies a delay _password_policy_lock.failure_delay_.
+
+PostgreSQL does not support blocking the authentication process. This extension only modifies the message returned to the user to emulate a user blocking.
+
+When a login is successful the number of failed accounts is reset.
+
 
 ## Testing
 

@@ -1,6 +1,6 @@
-passwordpolicy.o
-passwordpolicy.so
-passwordpolicy.bc
+*.o
+*.bc
+*.so
 .vagrant
 *.log
 
