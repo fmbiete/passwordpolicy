@@ -15,8 +15,9 @@
 #include <postgres.h>
 
 /* Hook functions */
-extern void passwordpolicy_shmem_startup(void);
-extern void passwordpolicy_shmem_shutdown(int code, Datum arg);
+extern bool passwordpolicy_shmem_check(void);
 extern void passwordpolicy_shmem_request(void);
+extern void passwordpolicy_shmem_shutdown(int code, Datum arg);
+extern void passwordpolicy_shmem_startup(void);
 
 #endif

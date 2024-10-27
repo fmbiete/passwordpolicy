@@ -35,6 +35,8 @@ extern bool guc_passwordpolicy_enable_dict_check;
 extern int guc_passwordpolicy_lock_after;
 extern bool guc_passwordpolicy_lock_all_accounts;
 extern int guc_passwordpolicy_login_failure_delay;
+extern bool guc_passwordpolicy_lock_auto_unlock;
+extern int guc_passwordpolicy_lock_auto_unlock_after;
 
 // Hooks
 extern check_password_hook_type prev_check_password_hook;

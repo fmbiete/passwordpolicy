@@ -23,6 +23,8 @@ bool guc_passwordpolicy_enable_dict_check = true;   // Default: true
 int guc_passwordpolicy_lock_after = 5;              // Default: 5
 bool guc_passwordpolicy_lock_all_accounts = true;   // Default: true
 int guc_passwordpolicy_login_failure_delay = 5;     // Default: 5 seconds
+bool guc_passwordpolicy_lock_auto_unlock = true;    // Default: true
+int guc_passwordpolicy_lock_auto_unlock_after = 0;  // Default: 0 seconds (immediate)
 
 // Hooks
 check_password_hook_type prev_check_password_hook = NULL;

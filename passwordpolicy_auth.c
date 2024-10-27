@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * passwordpolicy_auth.h
+ * passwordpolicy_auth.c
  *      Authentication checks for passwordpolicy
  *
  * Copyright (c) 2024, Francisco Miguel Biete Banon
@@ -13,21 +13,23 @@
 #include "passwordpolicy_auth.h"
 
 #include <utils/hsearch.h>
+#include <utils/timestamp.h>
 
+#include "passwordpolicy_shmem.h"
 #include "passwordpolicy_vars.h"
 
 void passwordpolicy_client_authentication(Port *port, int status)
 {
   bool found;
-  int failures;
+  int failures, microsecs;
+  long int secs;
+  TimestampTz last_failure;
   PasswordPolicyAccount *entry;
 
   if (prev_client_authentication_hook)
     prev_client_authentication_hook(port, status);
 
-  /* Safety checks */
-  if (!passwordpolicy_shm || !passwordpolicy_hash_accounts ||
-      !pg_atomic_unlocked_test_flag(&(passwordpolicy_shm->flag_shutdown)))
+  if (!passwordpolicy_shmem_check())
     return;
 
   /*
@@ -39,6 +41,31 @@ void passwordpolicy_client_authentication(Port *port, int status)
     entry = (PasswordPolicyAccount *)hash_search(passwordpolicy_hash_accounts, port->user_name, HASH_FIND, &found);
     if (found)
     {
+      failures = pg_atomic_read_u64(&(entry->failures));
+      // account soft-locked
+      if (failures >= guc_passwordpolicy_lock_after)
+      {
+        // auto soft-unlock enabled
+        if (guc_passwordpolicy_lock_auto_unlock)
+        {
+          // auto soft-unlock delay
+          last_failure = pg_atomic_read_u64(&(entry->last_failure));
+          TimestampDifference(last_failure, GetCurrentTimestamp(), &secs, &microsecs);
+          if (secs < guc_passwordpolicy_lock_auto_unlock_after)
+          {
+            ereport(DEBUG3, (errmsg("passwordpolicy: maximum number of failed connections exceeded for '%s' and auto unlock time not passed",
+                                    port->user_name)));
+            goto error;
+          }
+        }
+        else
+        {
+          ereport(DEBUG3, (errmsg("passwordpolicy: maximum number of failed connections exceeded for '%s' and auto unlock disabled",
+                                  port->user_name)));
+          goto error;
+        }
+      }
+
       if (status == STATUS_OK)
       {
         ereport(DEBUG3, (errmsg("passwordpolicy: account '%s' failures reset", port->user_name)));
@@ -47,16 +74,12 @@ void passwordpolicy_client_authentication(Port *port, int status)
       else
       {
         failures = pg_atomic_add_fetch_u64(&(entry->failures), 1);
+        pg_atomic_write_u64(&(entry->last_failure), GetCurrentTimestamp());
         ereport(DEBUG3, (errmsg("passwordpolicy: account '%s' failures '%d/%d",
                                 port->user_name, failures, guc_passwordpolicy_lock_after)));
-        pg_atomic_write_u64(&(entry->last_failure), (int)time(NULL));
         if (failures >= guc_passwordpolicy_lock_after)
         {
-          /* introduce a delay, poor man method to reduce impact on sequential attacks */
-          pg_usleep(guc_passwordpolicy_login_failure_delay * USECS_PER_SEC);
-          /* terminate the backend */
-          ereport(FATAL, (errmsg("passwordpolicy: maximum number of failed connections exceeded for '%s' (%d/%d)",
-                                 port->user_name, failures, guc_passwordpolicy_lock_after)));
+          goto error;
         }
       }
     }
@@ -65,4 +88,15 @@ void passwordpolicy_client_authentication(Port *port, int status)
       ereport(DEBUG3, (errmsg("passwordpolicy: account '%s' not found in account table", port->user_name)));
     }
   }
+  goto end;
+
+error:
+  /* introduce a delay, poor man method to reduce impact on sequential attacks */
+  pg_usleep(guc_passwordpolicy_login_failure_delay * USECS_PER_SEC);
+  /* terminate the backend */
+  ereport(FATAL, (errmsg("passwordpolicy: maximum number of failed connections exceeded for '%s'",
+                         port->user_name)));
+
+end:
+  return;
 }
