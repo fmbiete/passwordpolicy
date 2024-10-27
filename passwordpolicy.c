@@ -93,19 +93,19 @@ void _PG_init(void)
 
   DefineCustomIntVariable(
       "password_policy_lock.max_number_accounts",
-      "Maximum number of accounts to consider",
+      "Maximum number of accounts to consider for soft-locking",
       NULL, &guc_passwordpolicy_max_num_accounts, 100, 1, INT_MAX,
       PGC_POSTMASTER, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   DefineCustomIntVariable(
       "password_policy_lock.number_failures",
-      "Number of login failures before locking the account",
+      "Number of login failures before soft-locking the account",
       NULL, &guc_passwordpolicy_lock_after, 5, 1, INT_MAX,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   DefineCustomBoolVariable(
       "password_policy_lock.include_all",
-      "Automatically lock all the accounts, or only those in the defined table",
+      "Consider all the accounts in the system, or only those in the passwordpolicy.accounts_lockable table",
       NULL, &guc_passwordpolicy_lock_all_accounts, false,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
@@ -113,6 +113,18 @@ void _PG_init(void)
       "password_policy_lock.failure_delay",
       "Introduce this delay in seconds after a failed login, if the acount is in the included list",
       NULL, &guc_passwordpolicy_login_failure_delay, 5, 0, INT_MAX,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  DefineCustomBoolVariable(
+      "password_policy_lock.auto_unlock",
+      "Automatically soft-unlock the accounts",
+      NULL, &guc_passwordpolicy_lock_auto_unlock, true,
+      PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  DefineCustomIntVariable(
+      "password_policy_lock.auto_unlock_after",
+      "Automatically soft-unlock the account after this number of seconds since the last failed login",
+      NULL, &guc_passwordpolicy_lock_auto_unlock_after, 0, 0, INT_MAX,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   EmitWarningsOnPlaceholders("pgauditlogtofile");

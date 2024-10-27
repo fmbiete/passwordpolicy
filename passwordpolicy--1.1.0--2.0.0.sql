@@ -1,11 +1,41 @@
-/* passwordpolicy/passwordpolicy--1.0.sql */
+/* passwordpolicy/passwordpolicy--1.1.0--2.0.0.sql */
 
 -- complain if script is sourced in psql
-\echo This file is part of a PostgreSQL module, add "passwordpolicy" to "shared_preload_libraries" in "postgresql.conf" to load this file. \quit
+\echo Use "ALTER EXTENSION passwordpolicy UPDATE TO '2.0.0'" to load this file. \quit
 
 CREATE SCHEMA IF NOT EXISTS passwordpolicy;
 
-CREATE TABLE IF NOT EXISTS passwordpolicy.lockable_accounts ( 
+
+--
+CREATE TABLE IF NOT EXISTS passwordpolicy.accounts_lockable ( 
   usename VARCHAR(64), 
-  CONSTRAINT pk_lockable_accounts PRIMARY KEY(usename) 
+  CONSTRAINT pk_accounts_lockable PRIMARY KEY(usename) 
 );
+
+
+--
+DROP FUNCTION IF EXISTS passwordpolicy.accounts_locked();
+
+CREATE FUNCTION passwordpolicy.accounts_locked (
+  OUT usename name,
+  OUT failure_count integer,
+  OUT last_failure timestamp with time zone
+)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT VOLATILE;
+
+REVOKE ALL ON FUNCTION passwordpolicy.accounts_locked() FROM PUBLIC;
+
+
+--
+DROP FUNCTION IF EXISTS passwordpolicy.account_locked_reset(name);
+
+CREATE FUNCTION passwordpolicy.account_locked_reset (
+  IN usename name
+)
+RETURNS integer
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT VOLATILE;
+
+REVOKE ALL ON FUNCTION passwordpolicy.account_locked_reset(name) FROM PUBLIC;

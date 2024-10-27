@@ -7,3 +7,5 @@
 test/regression.diffs
 test/regression.out
 test/results
+
+/.vscode

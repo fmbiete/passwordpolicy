@@ -89,12 +89,16 @@ password_policy.enable_dictionary_check = true    # Enable checks against a dict
 password_policy.require_validuntil = true
 ```
 
+This rule will require a valid until value **only** when setting a new password. Creation of user accounts without password is not affected, or any modification that does not involve a password.
+
 ### Delaying failed logins
 ```
 password_policy_lock.failure_delay = 5              # Number of seconds to delay logins after number of failures
 password_policy_lock.max_number_accounts = 100      # Number of user accounts, it can be smaller than the number of accounts in the system
 password_policy_lock.number_failures = 5            # Number of login failures before rejecting further logins
 password_policy_lock.include_all = true             # Consider all the accounts in the system
+password_policy_lock.auto_unlock = true             # Login with failed accounts will automatically work...
+password_policy_lock.auto_unlock_after = 0          # ...after N seconds (0: next login attempt)
 ```
 
 Install the extension in _postgres_ database.
@@ -105,17 +109,33 @@ CREATE EXTENSION passwordpolicy;
 #### List of lock accounts
 By default a list of all the existing users in the system (pg_user) is read.
 
-If _password_policy_lock.include_all = false_ then a list of user names is read from _passwordpolicy.lockable_accounts_ in _postgres_ database. This table is created by the extension on installation.
+If ```password_policy_lock.include_all = false``` then a list of user names is read from ```passwordpolicy.accounts_lockable``` in ```postgres``` database. This table is created by the extension on installation.
 
-It's recommended to indicate the approximate number of users in the database with _password_policy_lock.max_number_accounts_. Failure to do so could lead to poor login performance and accounts not being considered.
+It's recommended to indicate the approximate number of users in the database with ```password_policy_lock.max_number_accounts```. Failure to do so could lead to poor login performance and accounts not being considered.
 
 This list of users is maintained by the background worker. You can force an update reloading system configuration dynamically.
 
+The list of users monitored can be viewed calling this function:
+```
+SELECT passwordpolicy.accounts_locked() ORDER BY usename;
+```
+Notice that this function requires a shared lock, it will not impact the login process of new sessions, but it will impact the background worker of this extension.
+
+#### Account soft-locking
+**PostgreSQL does not support blocking the authentication process, this will always happen, so there will be impact in the database server. This extension only modifies the message returned to the user to emulate a user locking.**
+
 For each user we keep the number of consecutive login failures and the time of the last failure.
 
-When the number of consecutive failed logins reaches _password_policy_lock.number_failures_ the extension applies a delay _password_policy_lock.failure_delay_.
+When the number of consecutive failed logins reaches ```password_policy_lock.number_failures``` the extension applies a delay ```password_policy_lock.failure_delay``` and returns an error message.
 
-PostgreSQL does not support blocking the authentication process. This extension only modifies the message returned to the user to emulate a user blocking.
+If ```password_policy_lock.auto_unlock``` is enabled, the account will automatically unlock after ```password_policy_lock.auto_unlock_after``` seconds. Use 0 to automatically soft-unlock the account on the next attempt.
+
+If ```password_policy_lock.auto_unlock = false```, any account soft-locked will remain that way until a super user executes the manual unlock function:
+```
+SELECT passwordpolicy.account_locked_reset('username');
+```
+
+
 
 When a login is successful the number of failed accounts is reset.
 

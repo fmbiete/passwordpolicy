@@ -36,6 +36,7 @@
 #include <utils/snapmgr.h>
 #include <utils/timestamp.h>
 
+#include "passwordpolicy_shmem.h"
 #include "passwordpolicy_vars.h"
 
 /* global settings */
@@ -161,8 +162,7 @@ void passwordpolicy_populate_users(void)
   PasswordPolicyAccount *entry;
   PasswordPolicyAccountKey key;
 
-  /* shutdown in progress */
-  if (!pg_atomic_unlocked_test_flag(&(passwordpolicy_shm->flag_shutdown)))
+  if (!passwordpolicy_shmem_check())
     return;
 
   SetCurrentStatementStartTimestamp();
@@ -206,8 +206,8 @@ void passwordpolicy_populate_users(void)
   }
   else
   {
-    ereport(DEBUG3, (errmsg("passwordpolicy: reading accounts from passwordpolicy.lockable_accounts")));
-    appendStringInfo(&buf, "SELECT usename FROM passwordpolicy.lockable_accounts ORDER BY usename");
+    ereport(DEBUG3, (errmsg("passwordpolicy: reading accounts from passwordpolicy.accounts_lockable")));
+    appendStringInfo(&buf, "SELECT usename FROM passwordpolicy.accounts_lockable ORDER BY usename");
   }
 
   ret = SPI_execute(buf.data, true, 0);
@@ -222,7 +222,7 @@ void passwordpolicy_populate_users(void)
 
   pgstat_report_activity(STATE_RUNNING, "passwordpolicy adding accounts");
 
-  /* We don't need an exclusive lock */
+  /* Add accounts: we don't need an exclusive lock */
   LWLockAcquire(passwordpolicy_shm->lock, LW_SHARED);
   for (i = 0; i < SPI_processed; i++)
   {
@@ -257,8 +257,8 @@ void passwordpolicy_populate_users(void)
   LWLockRelease(passwordpolicy_shm->lock);
 
   pgstat_report_activity(STATE_RUNNING, "passwordpolicy hard-deleting accounts");
-  /* delete entries not present with shared lock */
-  LWLockAcquire(passwordpolicy_shm->lock, LW_SHARED);
+  /* delete entries not present: We need an exclusive lock, this will lock the listing of accounts, but won't impact logins */
+  LWLockAcquire(passwordpolicy_shm->lock, LW_EXCLUSIVE);
   hash_seq_init(&hash_seq, passwordpolicy_hash_accounts);
   while ((entry = (PasswordPolicyAccount *)hash_seq_search(&hash_seq)) != NULL)
   {

@@ -22,6 +22,12 @@
 /* Private functions forward declaration */
 Size passwordpolicy_memsize(void);
 
+bool passwordpolicy_shmem_check(void)
+{
+  return passwordpolicy_shm && passwordpolicy_hash_accounts &&
+         pg_atomic_unlocked_test_flag(&(passwordpolicy_shm->flag_shutdown));
+}
+
 /**
  * @brief Request shared memory space
  * @param void
