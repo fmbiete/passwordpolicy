@@ -13,19 +13,26 @@
 #include "passwordpolicy_check.h"
 
 #include <ctype.h>
+
 #include <catalog/namespace.h>
-#include <utils/guc.h>
 #include <commands/user.h>
+#if (PG_VERSION_NUM >= 140000)
+#include <common/hmac.h>
+#endif
+#include <common/sha2.h>
 #include <fmgr.h>
+#include <utils/builtins.h>
 
 #ifdef USE_CRACKLIB
 #include <crack.h>
 #endif
 
+#include "passwordpolicy_hash_history.h"
 #include "passwordpolicy_vars.h"
 
 /* forward declaration private functions */
 void passwordpolicy_check_password_policy(const char *password);
+char *passwordpolicy_generate_sha256_hash(const char *input);
 
 /*
  * check_password
@@ -119,6 +126,22 @@ void passwordpolicy_check_password(const char *username, const char *shadow_pass
       }
     }
 #endif
+
+    if (guc_passwordpolicy_history_max_num_entries > 0)
+    {
+      char *password_hash = passwordpolicy_generate_sha256_hash(password);
+      if (password_hash)
+      {
+        if (passwordpolicy_hash_history_exists(username, password_hash))
+        {
+          ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                          errmsg("password cannot be one of the last %d password used.",
+                                 guc_passwordpolicy_history_max_num_entries)));
+        }
+        passwordpolicy_hash_history_add(username, password_hash, GetCurrentTimestamp());
+        pfree(password_hash);
+      }
+    }
   }
 
   /* all checks passed, password is ok */
@@ -195,4 +218,54 @@ void passwordpolicy_check_password_policy(const char *password)
              errmsg("password must contain at least %d lower case letters.",
                     guc_passwordpolicy_min_lower_char)));
   }
+}
+
+char *passwordpolicy_generate_sha256_hash(const char *input)
+{
+  uint8 hash[SHA256_DIGEST_LENGTH];
+  char *input_hash;
+#if PG_VERSION_NUM >= 140000
+#define KEY_SHA256 "passwordpolicy"
+#define KEY_SHA256_LEN strlen(KEY_SHA256)
+  pg_hmac_ctx *ctx;
+#else
+  SHA256_CTX ctx;
+#endif
+
+  input_hash = palloc0(mul_size(sizeof(char), PG_SHA256_DIGEST_STRING_LENGTH));
+
+#if PG_VERSION_NUM >= 140000
+  if ((ctx = pg_hmac_create(PG_SHA256)) == NULL)
+  {
+    ereport(ERROR, (errmsg("error creating hmac sha256")));
+    return NULL;
+  }
+
+  if (pg_hmac_init(ctx, (const uint8 *)KEY_SHA256, KEY_SHA256_LEN) != 0 ||
+      pg_hmac_update(ctx, (const uint8 *)input, strlen(input)) != 0 ||
+      pg_hmac_final(ctx, hash, sizeof(hash)) != 0)
+  {
+    pg_hmac_free(ctx);
+    ereport(ERROR, (errmsg("error generating sha256")));
+    return NULL;
+  }
+
+  pg_hmac_free(ctx);
+#else
+  // Initialize the SHA-256 context
+  pg_sha256_init(&ctx);
+
+  // Update the context with the input data
+  pg_sha256_update(&ctx, (const uint8 *)input, strlen(input));
+
+  // Finalize the hash calculation
+  pg_sha256_final(&ctx, hash);
+
+#endif
+
+  hex_encode((const char *)hash, SHA256_DIGEST_LENGTH, input_hash);
+  input_hash[PG_SHA256_DIGEST_STRING_LENGTH - 1] = '\0';
+  ereport(DEBUG3, (errmsg("passwordpolicy: password hash '%s'", input_hash)));
+
+  return input_hash;
 }

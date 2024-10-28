@@ -17,7 +17,12 @@
 #include <utils/hsearch.h>
 #include <utils/timestamp.h>
 
+#include "passwordpolicy_hash_accounts.h"
+#include "passwordpolicy_hash_history.h"
 #include "passwordpolicy_vars.h"
+
+#define TRANCHE_NAME_ACCOUNTS "passwordpolicy accounts"
+#define TRANCHE_NAME_HISTORY "passwordpolicy history"
 
 /* Private functions forward declaration */
 Size passwordpolicy_memsize(void);
@@ -40,8 +45,10 @@ void passwordpolicy_shmem_request(void)
     prev_shmem_request_hook();
 #endif
 
-  RequestAddinShmemSpace(MAXALIGN(sizeof(PasswordPolicyShm)));
+  RequestAddinShmemSpace(passwordpolicy_memsize());
   RequestNamedLWLockTranche("passwordpolicy", 1);
+  RequestNamedLWLockTranche(TRANCHE_NAME_ACCOUNTS, 1);
+  RequestNamedLWLockTranche(TRANCHE_NAME_HISTORY, 1);
 }
 
 /**
@@ -52,7 +59,6 @@ void passwordpolicy_shmem_request(void)
 void passwordpolicy_shmem_startup(void)
 {
   bool found;
-  HASHCTL info;
 
   // Execute other hooks
   if (prev_shmem_startup_hook)
@@ -61,27 +67,22 @@ void passwordpolicy_shmem_startup(void)
   /* reset in case this is a restart within the postmaster */
   passwordpolicy_shm = NULL;
   passwordpolicy_hash_accounts = NULL;
+  passwordpolicy_hash_history = NULL;
 
   LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 
   passwordpolicy_shm = ShmemInitStruct("passwordpolicy", sizeof(PasswordPolicyShm), &found);
   if (!found)
   {
+    passwordpolicy_lock_accounts = &(GetNamedLWLockTranche(TRANCHE_NAME_ACCOUNTS))->lock;
+    passwordpolicy_lock_history = &(GetNamedLWLockTranche(TRANCHE_NAME_HISTORY))->lock;
     passwordpolicy_shm->lock = &(GetNamedLWLockTranche("passwordpolicy"))->lock;
     pg_atomic_init_flag(&(passwordpolicy_shm->flag_shutdown));
   }
 
-  info.keysize = sizeof(PasswordPolicyAccountKey);
-  info.entrysize = sizeof(PasswordPolicyAccount);
-  passwordpolicy_hash_accounts = ShmemInitHash("passwordpolicy hash accounts",
-                                               guc_passwordpolicy_max_num_accounts,
-                                               guc_passwordpolicy_max_num_accounts,
-                                               &info,
-#if (PG_VERSION_NUM >= 140000)
-                                               HASH_ELEM | HASH_STRINGS);
-#else
-                                               HASH_ELEM);
-#endif
+  passwordpolicy_hash_accounts_init();
+
+  passwordpolicy_hash_history_init();
 
   LWLockRelease(AddinShmemInitLock);
 
@@ -113,7 +114,8 @@ Size passwordpolicy_memsize(void)
   Size size;
 
   size = MAXALIGN(sizeof(PasswordPolicyShm));
-  size = add_size(size, hash_estimate_size(guc_passwordpolicy_max_num_accounts, sizeof(PasswordPolicyAccount)));
+  size = add_size(size, hash_estimate_size(guc_passwordpolicy_lock_max_num_accounts, sizeof(PasswordPolicyAccount)));
+  size = add_size(size, hash_estimate_size(guc_passwordpolicy_lock_max_num_accounts, sizeof(PasswordPolicyHistory)));
 
   return size;
 }
