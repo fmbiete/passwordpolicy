@@ -21,6 +21,7 @@
 #include "passwordpolicy_vars.h"
 
 #define PASSWORD_POLICY_SQL_LOCKED_NUMC 3
+#define PASSWORD_POLICY_SQL_HISTORY_NUMC 3
 
 /* We don't need to return on error on functions */
 
@@ -58,13 +59,13 @@ Datum account_locked_reset(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(accounts_locked);
 Datum accounts_locked(PG_FUNCTION_ARGS)
 {
+  HASH_SEQ_STATUS hash_seq;
+  MemoryContext per_query_ctx;
+  MemoryContext oldcontext;
+  PasswordPolicyAccount *entry;
   ReturnSetInfo *rsinfo;
   TupleDesc tupdesc;
   Tuplestorestate *tupstore;
-  MemoryContext per_query_ctx;
-  MemoryContext oldcontext;
-  HASH_SEQ_STATUS hash_seq;
-  PasswordPolicyAccount *entry;
 
   passwordpolicy_shmem_check();
 
@@ -93,7 +94,7 @@ Datum accounts_locked(PG_FUNCTION_ARGS)
 
   MemoryContextSwitchTo(oldcontext);
 
-  LWLockAcquire(passwordpolicy_shm->lock, LW_SHARED);
+  LWLockAcquire(passwordpolicy_lock_accounts, LW_SHARED);
 
   hash_seq_init(&hash_seq, passwordpolicy_hash_accounts);
   while ((entry = (PasswordPolicyAccount *)hash_seq_search(&hash_seq)) != NULL)
@@ -117,7 +118,7 @@ Datum accounts_locked(PG_FUNCTION_ARGS)
     tuplestore_putvalues(tupstore, tupdesc, values, nulls);
   }
 
-  LWLockRelease(passwordpolicy_shm->lock);
+  LWLockRelease(passwordpolicy_lock_accounts);
 
   PG_RETURN_INT32(0);
 }

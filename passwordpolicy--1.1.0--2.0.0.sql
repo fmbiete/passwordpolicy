@@ -39,3 +39,12 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT VOLATILE;
 
 REVOKE ALL ON FUNCTION passwordpolicy.account_locked_reset(name) FROM PUBLIC;
+
+
+--
+CREATE TABLE IF NOT EXISTS passwordpolicy.accounts_password_history (
+  usename VARCHAR(64),
+  password_hash VARCHAR(64),
+  changed_at timestamp with time zone,
+  CONSTRAINT pk_accounts_password_history PRIMARY KEY(usename, password_hash)
+);

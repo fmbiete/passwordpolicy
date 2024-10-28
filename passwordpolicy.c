@@ -49,6 +49,7 @@ void _PG_init(void)
                        errhint("Add passwordpolicy to the shared_preload_libraries configuration variable in postgresql.conf.")));
   }
 
+  /* Password checks */
   DefineCustomIntVariable(
       "password_policy.min_password_len",
       "Minimum password length.",
@@ -91,10 +92,11 @@ void _PG_init(void)
       NULL, &guc_passwordpolicy_require_validuntil, false,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
+  /* Account Soft-Lock */
   DefineCustomIntVariable(
       "password_policy_lock.max_number_accounts",
       "Maximum number of accounts to consider for soft-locking",
-      NULL, &guc_passwordpolicy_max_num_accounts, 100, 1, INT_MAX,
+      NULL, &guc_passwordpolicy_lock_max_num_accounts, 100, 1, INT_MAX,
       PGC_POSTMASTER, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   DefineCustomIntVariable(
@@ -112,7 +114,7 @@ void _PG_init(void)
   DefineCustomIntVariable(
       "password_policy_lock.failure_delay",
       "Introduce this delay in seconds after a failed login, if the acount is in the included list",
-      NULL, &guc_passwordpolicy_login_failure_delay, 5, 0, INT_MAX,
+      NULL, &guc_passwordpolicy_lock_failure_delay, 5, 0, INT_MAX,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   DefineCustomBoolVariable(
@@ -126,6 +128,19 @@ void _PG_init(void)
       "Automatically soft-unlock the account after this number of seconds since the last failed login",
       NULL, &guc_passwordpolicy_lock_auto_unlock_after, 0, 0, INT_MAX,
       PGC_SIGHUP, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  /* Password History */
+  DefineCustomIntVariable(
+      "password_policy_history.max_number_accounts",
+      "Maximum number of accounts with saved histroy",
+      NULL, &guc_passwordpolicy_history_max_num_accounts, 100, 1, INT_MAX,
+      PGC_POSTMASTER, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
+
+  DefineCustomIntVariable(
+      "password_policy_history.max_password_history",
+      "Password history entries to keep",
+      NULL, &guc_passwordpolicy_history_max_num_entries, 5, 1, INT_MAX,
+      PGC_POSTMASTER, GUC_NOT_IN_SAMPLE | GUC_SUPERUSER_ONLY, NULL, NULL, NULL);
 
   EmitWarningsOnPlaceholders("pgauditlogtofile");
 

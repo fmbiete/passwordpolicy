@@ -14,6 +14,7 @@
 
 #include <postgres.h>
 #include <commands/user.h>
+#include <common/sha2.h>
 #include <datatype/timestamp.h>
 #include <libpq/auth.h>
 #include <miscadmin.h>
@@ -23,20 +24,24 @@
 #include <storage/lwlock.h>
 #include <utils/hsearch.h>
 
-// Guc
-extern int guc_passwordpolicy_max_num_accounts;
-extern int guc_passwordpolicy_min_length;
-extern int guc_passwordpolicy_min_spc_char;
-extern int guc_passwordpolicy_min_number_char;
-extern int guc_passwordpolicy_min_upper_char;
-extern int guc_passwordpolicy_min_lower_char;
-extern bool guc_passwordpolicy_require_validuntil;
+// GUC Password checks
 extern bool guc_passwordpolicy_enable_dict_check;
+extern int guc_passwordpolicy_min_length;
+extern int guc_passwordpolicy_min_lower_char;
+extern int guc_passwordpolicy_min_number_char;
+extern int guc_passwordpolicy_min_spc_char;
+extern int guc_passwordpolicy_min_upper_char;
+extern bool guc_passwordpolicy_require_validuntil;
+// GUC Auth Soft-lock
 extern int guc_passwordpolicy_lock_after;
 extern bool guc_passwordpolicy_lock_all_accounts;
-extern int guc_passwordpolicy_login_failure_delay;
 extern bool guc_passwordpolicy_lock_auto_unlock;
 extern int guc_passwordpolicy_lock_auto_unlock_after;
+extern int guc_passwordpolicy_lock_failure_delay;
+extern int guc_passwordpolicy_lock_max_num_accounts;
+// GUC Password History
+extern int guc_passwordpolicy_history_max_num_accounts;
+extern int guc_passwordpolicy_history_max_num_entries;
 
 // Hooks
 extern check_password_hook_type prev_check_password_hook;
@@ -52,6 +57,18 @@ typedef struct PasswordPolicyAccount
   bool to_delete;
 } PasswordPolicyAccount;
 
+typedef struct PasswordPolicyHistoryHash
+{
+  char password_hash[PG_SHA256_DIGEST_STRING_LENGTH];
+  TimestampTz changed_at;
+} PasswordPolicyHistoryHash;
+
+typedef struct PasswordPolicyHistory
+{
+  PasswordPolicyAccountKey key;
+  PasswordPolicyHistoryHash *hashes;
+} PasswordPolicyHistory;
+
 typedef struct PasswordPolicyShm
 {
   LWLock *lock;
@@ -61,6 +78,9 @@ typedef struct PasswordPolicyShm
 // Shared Memory
 extern PasswordPolicyShm *passwordpolicy_shm;
 extern HTAB *passwordpolicy_hash_accounts;
+extern HTAB *passwordpolicy_hash_history;
+extern LWLock *passwordpolicy_lock_accounts;
+extern LWLock *passwordpolicy_lock_history;
 
 // Shared Memory - Hook
 extern shmem_startup_hook_type prev_shmem_startup_hook;
