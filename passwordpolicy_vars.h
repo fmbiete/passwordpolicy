@@ -51,10 +51,10 @@ extern ClientAuthentication_hook_type prev_client_authentication_hook;
 typedef char PasswordPolicyAccountKey[NAMEDATALEN + 1];
 typedef struct PasswordPolicyAccount
 {
-  PasswordPolicyAccountKey key; /* hash key of entry - MUST BE FIRST */
+  PasswordPolicyAccountKey key;
   pg_atomic_uint64 failures;
   pg_atomic_uint64 last_failure; /* typedef int64 pg_time_t */
-  bool to_delete;
+  pg_atomic_uint64 deleted;
 } PasswordPolicyAccount;
 
 typedef struct PasswordPolicyHistoryHash

@@ -113,10 +113,8 @@ void passwordpolicy_hash_accounts_load(void)
   LWLockRelease(passwordpolicy_lock_accounts);
 
   pgstat_report_activity(STATE_RUNNING, "passwordpolicy hard-deleting accounts");
-  /* delete entries not present: We need an exclusive lock, this will lock the listing of accounts, but won't impact logins */
-  LWLockAcquire(passwordpolicy_lock_accounts, LW_EXCLUSIVE);
+  /* mark as deleted entries not present */
   passwordpolicy_hash_accounts_hard_delete();
-  LWLockRelease(passwordpolicy_lock_accounts);
 
 error:
   SPI_finish();
@@ -138,7 +136,7 @@ void passwordpolicy_hash_accounts_add(const char *username)
   entry = (PasswordPolicyAccount *)hash_search(passwordpolicy_hash_accounts, username, HASH_ENTER_NULL, &found);
   if (found)
   {
-    entry->to_delete = false;
+    pg_atomic_write_u64(&(entry->deleted), 0);
     return;
   }
 
@@ -153,34 +151,33 @@ void passwordpolicy_hash_accounts_add(const char *username)
   ereport(DEBUG3, (errmsg("passwordpolicy: adding account '%s' to auth lock", username)));
   pg_atomic_init_u64(&(entry->failures), 0);
   pg_atomic_init_u64(&(entry->last_failure), 0);
-  entry->to_delete = false;
+  pg_atomic_init_u64(&(entry->deleted), 0);
   /* add key the last to avoid reading uninitialized values */
   strncpy(entry->key, username, NAMEDATALEN);
 }
 
+/*
+ * @brief Mark all the entries still marked for soft-deletion as deleted (1)
+ **/
 void passwordpolicy_hash_accounts_hard_delete(void)
 {
-  bool found;
   HASH_SEQ_STATUS hash_seq;
   PasswordPolicyAccount *entry;
-  PasswordPolicyAccountKey key;
 
   hash_seq_init(&hash_seq, passwordpolicy_hash_accounts);
   while ((entry = (PasswordPolicyAccount *)hash_seq_search(&hash_seq)) != NULL)
   {
-    if (entry->to_delete)
+    if (pg_atomic_read_u64(&(entry->deleted)) == 2)
     {
-      strncpy(key, entry->key, NAMEDATALEN);
-
-      hash_search(passwordpolicy_hash_accounts, &key, HASH_REMOVE, &found);
-      if (found)
-      {
-        ereport(DEBUG3, (errmsg("passwordpolicy: removed account '%s' from auth lock", key)));
-      }
+      ereport(DEBUG3, (errmsg("passwordpolicy: (soft) removed account '%s' from auth lock", entry->key)));
+      pg_atomic_write_u64(&(entry->deleted), 1);
     }
   }
 }
 
+/*
+ * @brief Mark all the active entries as candidate to soft-deletion (2)
+ **/
 void passwordpolicy_hash_accounts_soft_delete(void)
 {
   HASH_SEQ_STATUS hash_seq;
@@ -189,6 +186,7 @@ void passwordpolicy_hash_accounts_soft_delete(void)
   hash_seq_init(&hash_seq, passwordpolicy_hash_accounts);
   while ((entry = (PasswordPolicyAccount *)hash_seq_search(&hash_seq)) != NULL)
   {
-    entry->to_delete = true;
+    if (pg_atomic_read_u64(&(entry->deleted)) == 0)
+      pg_atomic_write_u64(&(entry->deleted), 2);
   }
 }

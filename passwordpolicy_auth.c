@@ -50,6 +50,12 @@ void passwordpolicy_client_authentication(Port *port, int status)
     return;
   }
 
+  if (pg_atomic_read_u64(&(entry->deleted)) == 1)
+  {
+    ereport(DEBUG3, (errmsg("passwordpolicy: account '%s' marked for deletion, ignoring account", port->user_name)));
+    return;
+  }
+
   // Soft-lock
   failures = pg_atomic_read_u64(&(entry->failures));
   // account soft-locked
