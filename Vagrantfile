@@ -21,14 +21,14 @@ Vagrant.configure("2") do |config|
       dnf update -y
       dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
       dnf install -y epel-release
-      dnf install -y openssl-devel gcc make redhat-rpm-config ccache
-      dnf install -y --enablerepo=crb postgresql15-server postgresql15-libs postgresql15-devel postgresql15-contrib
-      dnf install -y --enablerepo-crb install cracklib cracklib-devel cracklib-dicts words
+      dnf install -y openssl-devel gcc make redhat-rpm-config ccache krb5-devel clang
+      dnf install -y --enablerepo=crb cracklib cracklib-devel cracklib-dicts words
+      dnf install -y --enablerepo=crb postgresql13-server postgresql13-libs postgresql13-devel postgresql13-contrib
       mkdict /usr/share/dict/* | packer /var/cache/cracklib/postgresql_dict
       # default data directory is '/var/lib/pgsql/15/data/'
-      /usr/pgsql-15/bin/postgresql-15-setup initdb
-      systemctl start postgresql-15.service
-      systemctl enable postgresql-15.service
+      /usr/pgsql-15/bin/postgresql-13-setup initdb
+      systemctl start postgresql-13.service
+      systemctl enable postgresql-13.service
     SHELL
   end
 

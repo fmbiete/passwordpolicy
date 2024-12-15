@@ -1,9 +1,11 @@
-passwordpolicy.o
-passwordpolicy.so
-passwordpolicy.bc
+*.o
+*.bc
+*.so
 .vagrant
 *.log
 
 test/regression.diffs
 test/regression.out
 test/results
+
+/.vscode
