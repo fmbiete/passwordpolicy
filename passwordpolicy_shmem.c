@@ -41,8 +41,8 @@ bool passwordpolicy_shmem_check(void)
 void passwordpolicy_shmem_request(void)
 {
 #if (PG_VERSION_NUM >= 150000)
-  if (prev_shmem_request_hook)
-    prev_shmem_request_hook();
+  if (passwordpolicy_prev_shmem_request_hook)
+    passwordpolicy_prev_shmem_request_hook();
 #endif
 
   RequestAddinShmemSpace(passwordpolicy_memsize());
@@ -61,8 +61,8 @@ void passwordpolicy_shmem_startup(void)
   bool found;
 
   // Execute other hooks
-  if (prev_shmem_startup_hook)
-    prev_shmem_startup_hook();
+  if (passwordpolicy_prev_shmem_startup_hook)
+    passwordpolicy_prev_shmem_startup_hook();
 
   /* reset in case this is a restart within the postmaster */
   passwordpolicy_shm = NULL;

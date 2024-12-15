@@ -44,8 +44,8 @@ extern int guc_passwordpolicy_history_max_num_accounts;
 extern int guc_passwordpolicy_history_max_num_entries;
 
 // Hooks
-extern check_password_hook_type prev_check_password_hook;
-extern ClientAuthentication_hook_type prev_client_authentication_hook;
+extern check_password_hook_type passwordpolicy_prev_check_password_hook;
+extern ClientAuthentication_hook_type passwordpolicy_prev_client_authentication_hook;
 
 // Shared Memory types
 typedef char PasswordPolicyAccountKey[NAMEDATALEN + 1];
@@ -83,9 +83,9 @@ extern LWLock *passwordpolicy_lock_accounts;
 extern LWLock *passwordpolicy_lock_history;
 
 // Shared Memory - Hook
-extern shmem_startup_hook_type prev_shmem_startup_hook;
+extern shmem_startup_hook_type passwordpolicy_prev_shmem_startup_hook;
 #if (PG_VERSION_NUM >= 150000)
-extern shmem_request_hook_type prev_shmem_request_hook;
+extern shmem_request_hook_type passwordpolicy_prev_shmem_request_hook;
 #endif
 
 #endif

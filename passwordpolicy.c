@@ -159,24 +159,27 @@ void _PG_init(void)
 
 /* backend hooks */
 #if (PG_VERSION_NUM >= 150000)
-  prev_shmem_request_hook = shmem_request_hook;
+  passwordpolicy_prev_shmem_request_hook = shmem_request_hook;
   shmem_request_hook = passwordpolicy_shmem_request;
 #else
   /* call the function hook manually */
   passwordpolicy_shmem_request();
 #endif
 
-  prev_shmem_startup_hook = shmem_startup_hook;
+  passwordpolicy_prev_shmem_startup_hook = shmem_startup_hook;
   shmem_startup_hook = passwordpolicy_shmem_startup;
-  prev_check_password_hook = check_password_hook;
+  passwordpolicy_prev_check_password_hook = check_password_hook;
   check_password_hook = passwordpolicy_check_password;
-  prev_client_authentication_hook = ClientAuthentication_hook;
+  passwordpolicy_prev_client_authentication_hook = ClientAuthentication_hook;
   ClientAuthentication_hook = passwordpolicy_client_authentication;
 }
 
 void _PG_fini(void)
 {
-  shmem_startup_hook = prev_shmem_startup_hook;
-  check_password_hook = prev_check_password_hook;
-  ClientAuthentication_hook = prev_client_authentication_hook;
+#if (PG_VERSION_NUM >= 150000)
+  shmem_request_hook = passwordpolicy_prev_shmem_request_hook;
+#endif
+  shmem_startup_hook = passwordpolicy_prev_shmem_startup_hook;
+  check_password_hook = passwordpolicy_prev_check_password_hook;
+  ClientAuthentication_hook = passwordpolicy_prev_client_authentication_hook;
 }

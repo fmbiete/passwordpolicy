@@ -31,8 +31,8 @@ int guc_passwordpolicy_history_max_num_accounts = 100; // Default: 100
 int guc_passwordpolicy_history_max_num_entries = 5;    // Default: 5
 
 // Hooks
-check_password_hook_type prev_check_password_hook = NULL;
-ClientAuthentication_hook_type prev_client_authentication_hook = NULL;
+check_password_hook_type passwordpolicy_prev_check_password_hook = NULL;
+ClientAuthentication_hook_type passwordpolicy_prev_client_authentication_hook = NULL;
 
 // Shared memory
 PasswordPolicyShm *passwordpolicy_shm = NULL;
@@ -42,7 +42,7 @@ LWLock *passwordpolicy_lock_accounts = NULL;
 LWLock *passwordpolicy_lock_history = NULL;
 
 // Shared memory hook
-shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+shmem_startup_hook_type passwordpolicy_prev_shmem_startup_hook = NULL;
 #if (PG_VERSION_NUM >= 150000)
-shmem_request_hook_type prev_shmem_request_hook = NULL;
+shmem_request_hook_type passwordpolicy_prev_shmem_request_hook = NULL;
 #endif
