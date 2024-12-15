@@ -176,9 +176,6 @@ void _PG_init(void)
 
 void _PG_fini(void)
 {
-#if (PG_VERSION_NUM >= 150000)
-  shmem_request_hook = passwordpolicy_prev_shmem_request_hook;
-#endif
   shmem_startup_hook = passwordpolicy_prev_shmem_startup_hook;
   check_password_hook = passwordpolicy_prev_check_password_hook;
   ClientAuthentication_hook = passwordpolicy_prev_client_authentication_hook;
