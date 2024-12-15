@@ -56,8 +56,8 @@ void passwordpolicy_check_password(const char *username, const char *shadow_pass
                                    PasswordType password_type, Datum validuntil_time,
                                    bool validuntil_null)
 {
-  if (prev_check_password_hook)
-    prev_check_password_hook(username, shadow_pass, password_type, validuntil_time, validuntil_null);
+  if (passwordpolicy_prev_check_password_hook)
+    passwordpolicy_prev_check_password_hook(username, shadow_pass, password_type, validuntil_time, validuntil_null);
 
   if (validuntil_null && guc_passwordpolicy_require_validuntil)
   {

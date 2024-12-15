@@ -31,8 +31,8 @@ void passwordpolicy_client_authentication(Port *port, int status)
       this is a poor man approach as we don't avoid brute force attacks
      */
 
-  if (prev_client_authentication_hook)
-    prev_client_authentication_hook(port, status);
+  if (passwordpolicy_prev_client_authentication_hook)
+    passwordpolicy_prev_client_authentication_hook(port, status);
 
   if (status == STATUS_EOF)
     return;
