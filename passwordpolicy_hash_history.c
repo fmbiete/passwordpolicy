@@ -17,6 +17,7 @@
 #include <pgstat.h>
 #include <storage/shmem.h>
 #include <utils/builtins.h>
+#include <utils/guc.h>
 #include <utils/hsearch.h>
 #include <utils/snapmgr.h>
 
@@ -223,6 +224,12 @@ void passwordpolicy_hash_history_save(void)
 
   pgstat_report_activity(STATE_RUNNING, "passwordpolicy checking extension");
 
+  if (strcmp(GetConfigOptionByName("transaction_read_only", NULL, false), "on") == 0)
+  {
+    ereport(DEBUG3, (errmsg("passwordpolicy: database is in read-only mode, skipping password history")));
+    goto error;
+  }
+  
   ret = SPI_execute("SELECT 1 FROM pg_extension WHERE extname = 'passwordpolicy'", true, 0);
   if (ret != SPI_OK_SELECT)
   {
