@@ -232,7 +232,7 @@ void passwordpolicy_hash_history_save(void)
 
   if (SPI_processed == 0)
   {
-    ereport(INFO, (errmsg("passwordpolicy: extension is not installed, skipping password history")));
+    ereport(DEBUG3, (errmsg("passwordpolicy: extension is not installed, skipping password history")));
     goto error;
   }
 

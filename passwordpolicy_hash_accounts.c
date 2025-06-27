@@ -67,7 +67,7 @@ void passwordpolicy_hash_accounts_load(void)
 
   if (SPI_processed == 0)
   {
-    ereport(INFO, (errmsg("passwordpolicy: extension is not installed, skipping account auth checks")));
+    ereport(DEBUG3, (errmsg("passwordpolicy: extension is not installed, skipping account auth checks")));
     goto error;
   }
 
