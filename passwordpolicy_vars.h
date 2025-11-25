@@ -79,6 +79,7 @@ typedef struct PasswordPolicyShm
 extern PasswordPolicyShm *passwordpolicy_shm;
 extern HTAB *passwordpolicy_hash_accounts;
 extern HTAB *passwordpolicy_hash_history;
+extern TimestampTz passwordpolicy_hash_history_last_save;
 extern LWLock *passwordpolicy_lock_accounts;
 extern LWLock *passwordpolicy_lock_history;
 

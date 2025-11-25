@@ -38,6 +38,7 @@ ClientAuthentication_hook_type passwordpolicy_prev_client_authentication_hook = 
 PasswordPolicyShm *passwordpolicy_shm = NULL;
 HTAB *passwordpolicy_hash_accounts = NULL;
 HTAB *passwordpolicy_hash_history = NULL;
+TimestampTz passwordpolicy_hash_history_last_save = 0;
 LWLock *passwordpolicy_lock_accounts = NULL;
 LWLock *passwordpolicy_lock_history = NULL;
 

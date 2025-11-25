@@ -135,6 +135,7 @@ void passwordpolicy_hash_history_load(void)
   char *query;
   Datum params[1];
   int ret, i;
+  TimestampTz changed_at;
   TupleDesc tupdesc;
   SPIPlanPtr plan;
   SPITupleTable *tuptable;
@@ -155,7 +156,7 @@ void passwordpolicy_hash_history_load(void)
 
   if (SPI_processed == 0)
   {
-    ereport(INFO, (errmsg("passwordpolicy: extension is not installed, skipping password history")));
+    ereport(DEBUG3, (errmsg("passwordpolicy: extension is not installed, skipping password history")));
     goto error;
   }
 
@@ -191,11 +192,15 @@ void passwordpolicy_hash_history_load(void)
   pgstat_report_activity(STATE_RUNNING, "passwordpolicy loading history");
 
   LWLockAcquire(passwordpolicy_lock_history, LW_EXCLUSIVE);
+  passwordpolicy_hash_history_last_save = 0;
   for (i = 0; i < SPI_processed; i++)
   {
+    changed_at = DatumGetTimestampTz(SPI_getbinval(tuptable->vals[i], tupdesc, 3, &isnull));
     passwordpolicy_hash_history_add(SPI_getvalue(tuptable->vals[i], tupdesc, 1),
-                                    SPI_getvalue(tuptable->vals[i], tupdesc, 2),
-                                    DatumGetTimestampTz(SPI_getbinval(tuptable->vals[i], tupdesc, 3, &isnull)));
+                                      SPI_getvalue(tuptable->vals[i], tupdesc, 2),
+                                      changed_at);
+    if (changed_at > passwordpolicy_hash_history_last_save)
+      passwordpolicy_hash_history_last_save = changed_at;
   }
   LWLockRelease(passwordpolicy_lock_history);
 
@@ -212,10 +217,11 @@ void passwordpolicy_hash_history_save(void)
   char *sql_delete, *sql_insert;
   Datum params_delete[2], params_insert[3];
   HASH_SEQ_STATUS hash_seq;
-  int ret, i;
+  int ret, i, inserted;
   PasswordPolicyHistory *entry;
   SPIPlanPtr plan_delete, plan_insert;
-  TimestampTz oldest_change;
+  TimestampTz oldest_change, newest_change;
+
 
   SetCurrentStatementStartTimestamp();
   StartTransactionCommand();
@@ -275,35 +281,46 @@ void passwordpolicy_hash_history_save(void)
   }
 
   LWLockAcquire(passwordpolicy_lock_history, LW_SHARED);
+  newest_change = passwordpolicy_hash_history_last_save;
   hash_seq_init(&hash_seq, passwordpolicy_hash_history);
   while ((entry = (PasswordPolicyHistory *)hash_seq_search(&hash_seq)) != NULL)
   {
     oldest_change = 0;
+    inserted = 0;
     params_insert[0] = CStringGetTextDatum(entry->key);
     for (i = 0; i < guc_passwordpolicy_history_max_num_entries; i++)
     {
       if (entry->hashes[i].changed_at != 0)
       {
-        params_insert[1] = CStringGetTextDatum(entry->hashes[i].password_hash);
-        params_insert[2] = TimestampTzGetDatum(entry->hashes[i].changed_at);
         if (oldest_change == 0 || oldest_change > entry->hashes[i].changed_at)
           oldest_change = entry->hashes[i].changed_at;
-        pgstat_report_activity(STATE_RUNNING, "passwordpolicy insert history");
-        ret = SPI_execute_plan(plan_insert, params_insert, NULL, false, 0);
-        if (ret != SPI_OK_INSERT)
+        if (entry->hashes[i].changed_at > passwordpolicy_hash_history_last_save)
         {
-          ereport(ERROR, (errmsg("passwordpolicy: failed to execute password history insert")));
-          LWLockRelease(passwordpolicy_lock_history);
-          goto error;
+          // only insert if it's a new history entry
+          ereport(DEBUG3, (errmsg("passwordpolicy: inserting new entry for account '%s' into password history", entry->key)));
+          pgstat_report_activity(STATE_RUNNING, "passwordpolicy insert history");
+          inserted = 1;
+          newest_change = entry->hashes[i].changed_at;
+          params_insert[1] = CStringGetTextDatum(entry->hashes[i].password_hash);
+          params_insert[2] = TimestampTzGetDatum(entry->hashes[i].changed_at);
+          ret = SPI_execute_plan(plan_insert, params_insert, NULL, false, 0);
+          if (ret != SPI_OK_INSERT)
+          {
+            ereport(ERROR, (errmsg("passwordpolicy: failed to execute password history insert")));
+            LWLockRelease(passwordpolicy_lock_history);
+            goto error;
+          }
         }
       }
     }
 
-    if (oldest_change > 0)
+    if (inserted == 1)
     {
+      // delete only if we have a new history entry for this user
+      ereport(DEBUG3, (errmsg("passwordpolicy: deleting old entries for account '%s' from password history", entry->key)));
+      pgstat_report_activity(STATE_RUNNING, "passwordpolicy delete history");
       params_delete[0] = CStringGetTextDatum(entry->key);
       params_delete[1] = TimestampTzGetDatum(oldest_change);
-      pgstat_report_activity(STATE_RUNNING, "passwordpolicy delete history");
       ret = SPI_execute_plan(plan_delete, params_delete, NULL, false, 0);
       if (ret != SPI_OK_DELETE)
       {
@@ -313,6 +330,7 @@ void passwordpolicy_hash_history_save(void)
       }
     }
   }
+  passwordpolicy_hash_history_last_save = newest_change;
   LWLockRelease(passwordpolicy_lock_history);
 
 error:

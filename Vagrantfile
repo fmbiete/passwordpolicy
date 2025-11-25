@@ -23,20 +23,19 @@ Vagrant.configure("2") do |config|
       dnf install -y epel-release
       dnf install -y openssl-devel gcc make redhat-rpm-config ccache krb5-devel clang
       dnf install -y --enablerepo=crb cracklib cracklib-devel cracklib-dicts words
-      dnf install -y --enablerepo=crb postgresql13-server postgresql13-libs postgresql13-devel postgresql13-contrib
+      dnf install -y --enablerepo=crb postgresql18-server postgresql18-libs postgresql18-devel postgresql18-contrib
       mkdict /usr/share/dict/* | packer /var/cache/cracklib/postgresql_dict
-      # default data directory is '/var/lib/pgsql/15/data/'
-      /usr/pgsql-15/bin/postgresql-13-setup initdb
-      systemctl start postgresql-13.service
-      systemctl enable postgresql-13.service
+      /usr/pgsql-18/bin/postgresql-18-setup initdb
+      systemctl start postgresql-18.service
+      systemctl enable postgresql-18.service
     SHELL
   end
 
   config.vm.provision "install", type: "shell", run: 'never', inline: <<-SHELL
     cd /home/vagrant/passwordpolicy
-    sudo PATH="/usr/pgsql-15/bin:$PATH" make
-    sudo PATH="/usr/pgsql-15/bin:$PATH" make install
-    sudo PATH="/usr/pgsql-15/bin:$PATH" make installcheck
+    sudo PATH="/usr/pgsql-18/bin:$PATH" make
+    sudo PATH="/usr/pgsql-18/bin:$PATH" make install
+    sudo PATH="/usr/pgsql-18/bin:$PATH" make installcheck
     rm passwordpolicy.o passwordpolicy.so
   SHELL
 end
