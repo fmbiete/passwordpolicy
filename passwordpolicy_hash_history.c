@@ -249,7 +249,7 @@ void passwordpolicy_hash_history_save(void)
                     false, 0);
   if (ret != SPI_OK_DELETE)
   {
-    ereport(ERROR, (errmsg("passwordpolicy: failed to delete password history removed users")));
+    ereport(ERROR, (errmsg("passwordpolicy: failed to delete password history for removed users")));
     goto error;
   }
 
@@ -292,7 +292,7 @@ void passwordpolicy_hash_history_save(void)
         ret = SPI_execute_plan(plan_insert, params_insert, NULL, false, 0);
         if (ret != SPI_OK_INSERT)
         {
-          ereport(ERROR, (errmsg("passwordpolicy: failed to executre password history insert")));
+          ereport(ERROR, (errmsg("passwordpolicy: failed to execute password history insert")));
           LWLockRelease(passwordpolicy_lock_history);
           goto error;
         }
@@ -307,7 +307,7 @@ void passwordpolicy_hash_history_save(void)
       ret = SPI_execute_plan(plan_delete, params_delete, NULL, false, 0);
       if (ret != SPI_OK_DELETE)
       {
-        ereport(ERROR, (errmsg("passwordpolicy: failed to executre password history delete")));
+        ereport(ERROR, (errmsg("passwordpolicy: failed to execute password history delete")));
         LWLockRelease(passwordpolicy_lock_history);
         goto error;
       }
